@@ -1,0 +1,20 @@
+# Foundry / dev artifacts
+*.log
+*.zip
+*.tar.gz
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local notes / drafts that shouldn't ship
+NOTES.md
+TODO.md
+.scratch/
+
+# Node (if you add tooling later)
+node_modules/
+package-lock.json
+yarn.lock
