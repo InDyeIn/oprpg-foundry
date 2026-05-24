@@ -49,6 +49,98 @@ Hooks.once("setup", () => {
 
 Hooks.on("preCreateActor", _onPreCreateActor);
 
+// Activity animation hook — when any dnd5e activity is used, look up the
+// parent item's `flags.oprpg.animationMacroId` (the id of a Macro doc in
+// game.macros). If present, execute that macro via the official Foundry
+// API. This avoids CSP issues with `new AsyncFunction(...)` and decouples
+// our animation from the activity's promise chain.
+Hooks.on("dnd5e.postUseActivity", _onPostUseActivity);
+Hooks.once("ready", () => log("dnd5e.postUseActivity hook bound — animations ready."));
+
+function _onPostUseActivity(activity, usageConfig, results) {
+  // Prominent diagnostic — confirms the hook is wired and tells us why we
+  // skip (no item, wrong flag, etc.).
+  try {
+    const item = activity?.item;
+    const itemName = item?.name ?? "<no item>";
+    const macroId = item?.getFlag?.(MODULE_ID, "animationMacroId");
+    const hasOprpgFlag = !!item?.flags?.[MODULE_ID];
+    const hasItemacroFlag = !!item?.flags?.itemacro;
+
+    console.log(
+      `%c[oprpg] postUseActivity FIRED: item='${itemName}', macroId=${macroId ?? "(none)"}, ` +
+      `hasOprpgFlag=${hasOprpgFlag}, hasItemacroFlag=${hasItemacroFlag}`,
+      "color:#c8a86b;font-weight:bold"
+    );
+
+    if (!item) return;
+    if (!macroId) {
+      if (hasItemacroFlag && !hasOprpgFlag) {
+        warn(`'${itemName}' tem flag itemacro velha — re-rode install-lunariano.js depois de deletar o item.`);
+      }
+      return;
+    }
+    setTimeout(() => _runAnimationMacro(macroId, item, activity), 0);
+  } catch (err) {
+    error("postUseActivity hook crashed:", err);
+  }
+}
+
+async function _runAnimationMacro(macroId, item, activity) {
+  try {
+    const macro = game.macros?.get(macroId);
+    if (!macro) {
+      warn(`Animation macro id '${macroId}' for '${item.name}' not found.`);
+      return;
+    }
+    const actor = item.actor ?? activity.actor;
+    const token = canvas.tokens?.controlled?.[0]?.document
+               ?? actor?.getActiveTokens?.()?.[0]?.document
+               ?? null;
+    const targets = Array.from(game.user.targets ?? []);
+    // Foundry's Macro#execute accepts a scope object exposed as locals
+    // inside the macro body.
+    await macro.execute({ actor, item, activity, token, targets });
+  } catch (err) {
+    error(`Animation macro execution failed for '${item.name}':`, err);
+    ui.notifications?.warn(`OPRPG: animação falhou em '${item.name}'. Veja o console.`);
+  }
+}
+
+// Auto-roll damage for damage activities on OP items. dnd5e v5.x activities of
+// type "damage" create a chat card with a "Roll Damage" button — they don't
+// auto-roll. For OP items flagged with `flags.oprpg.autoRollDamage`, we trigger
+// the damage roll automatically after the activity is used.
+Hooks.on("dnd5e.postUseActivity", _onPostUseActivityAutoRoll);
+
+function _onPostUseActivityAutoRoll(activity, usageConfig, results) {
+  try {
+    const item = activity?.item;
+    if (!item) return;
+    if (activity.type !== "damage") return;
+    // Opt-in: only auto-roll for items that explicitly request it. Default ON
+    // for OP items (have the oprpg flag) unless explicitly disabled.
+    const flag = item.getFlag(MODULE_ID, "autoRollDamage");
+    const hasOprpgFlag = !!item.flags?.[MODULE_ID];
+    const shouldAutoRoll = flag === true || (flag !== false && hasOprpgFlag);
+    if (!shouldAutoRoll) return;
+
+    setTimeout(() => {
+      try {
+        activity.rollDamage(
+          {},
+          {},
+          { data: { "flags.dnd5e.originatingMessage": results?.message?.id } }
+        );
+      } catch (err) {
+        error(`Auto-roll damage failed for '${item.name}':`, err);
+      }
+    }, 50);
+  } catch (err) {
+    error("autoRollDamage hook crashed:", err);
+  }
+}
+
 // ---- Dano Verdadeiro (true damage) bypass ----
 // The dnd5e engine reduces incoming damage by the actor's resistance and
 // boosts it by vulnerability, both keyed by damage type. For OP "verdadeiro",
@@ -81,22 +173,194 @@ Hooks.on("dnd5e.calculateDamage", (actor, damages, options) => {
 // Render-time DOM injection on the character sheet sidebar. The dnd5e modern
 // sheet doesn't render resources.primary/secondary, Haki tracks, or a quick-
 // access Técnicas list — we add them ourselves.
+// Track scheduled render-debounce per actor sheet app so multiple cascade
+// renders from a single user action collapse into one panel re-injection.
+const _renderScheduled = new WeakSet();
+function _scheduleInject(app, root, actor, sheetType) {
+  if (_renderScheduled.has(app)) return;
+  _renderScheduled.add(app);
+  requestAnimationFrame(() => {
+    _renderScheduled.delete(app);
+    if (!root.isConnected) return; // sheet was closed in the meantime
+    _injectAll(app, root, actor, sheetType);
+  });
+}
+
 function _onRenderCharacterSheet(app, html) {
   const root = html?.jquery ? html[0] : html;
   if (!root || !(root instanceof HTMLElement)) return;
   const actor = app?.actor ?? app?.document;
   if (!actor || actor.type !== "character") return;
 
-  // Insertion order matters — each panel anchors to "previous panel or card".
-  // Bounty first (it's the "identity" stat, lives at the top).
-  if (getSetting("showBountyPanel") !== false) _injectBountyPanel(app, root, actor);
-  _injectResourcesPanel(app, root, actor);
-  if (getSetting("showHakiPanel") !== false) _injectHakiPanel(app, root, actor);
-  if (getSetting("showTecnicasPanel") !== false) _injectTecnicasPanel(app, root, actor);
+  _scheduleInject(app, root, actor, "dnd5e");
 }
+
+function _onRenderCharacterSheetTidy(app, htmlOrEl, dataOrCtx, forced) {
+  const element = htmlOrEl?.jquery ? htmlOrEl[0] : htmlOrEl;
+  if (!(element instanceof HTMLElement)) {
+    log(`tidy5e render: 2nd arg not an HTMLElement (got ${typeof htmlOrEl})`);
+    return;
+  }
+  const actor = app?.actor ?? app?.document;
+  if (!actor || actor.type !== "character") return;
+
+  // Tidy5e uses Svelte — defer one tick so reactive components have mounted.
+  // Debounced via _scheduleInject so cascade renders collapse into one.
+  setTimeout(() => _scheduleInject(app, element, actor, "tidy5e"), 0);
+}
+
+/**
+ * Shared injection dispatcher. All OPRPG panels live inside a single wrapper
+ * that enforces a vertical stack — this is critical for sheets like Tidy5e
+ * Classic whose parent containers are flex-row (without the wrapper the
+ * panels would sit side-by-side, cramping the rest of the sheet).
+ */
+function _injectAll(app, root, actor, sheetType) {
+  log(`render → sheetType='${sheetType}', actor='${actor.name}', tagName=<${root.tagName}>`);
+
+  // Remove any pre-existing wrapper from previous render
+  root.querySelector(".oprpg-panels-wrapper")?.remove();
+  // Also remove orphaned panels not inside a wrapper (legacy from old code)
+  root.querySelectorAll(".oprpg-bounty-panel, .oprpg-resources-panel, .oprpg-haki-panel, .oprpg-tecnicas-panel")
+    .forEach(el => { if (!el.closest(".oprpg-panels-wrapper")) el.remove(); });
+
+  // Find anchor (single lookup for the whole wrapper)
+  const anchor = _findAnchor(root, sheetType, {
+    dnd5eChain: [".sidebar > .card"],
+    tidyChain: [
+      // Tidy5e Quadrone: the "Sheet" tab is internally called "attributes".
+      // Anchoring inside its tab-contents container means the wrapper is
+      // naturally hidden when other tabs are active (no JS toggle needed).
+      '[data-tab-contents-for="attributes"]',
+      '[data-tab-contents-for="favorites"]',
+      // Tidy5e Classic and other layouts:
+      '.tab[data-tab="attributes"]',
+      '[data-tidy-sheet-part="actor-portrait-container"]',
+      '.tidy5e-sheet .portrait',
+      '.tidy5e-sheet .sidebar',
+      '.tidy5e-sheet [class*="sidebar"]',
+      '.tidy5e-sheet [class*="portrait"]'
+    ]
+  });
+  if (!anchor) {
+    warn(`No anchor found for OPRPG panels (sheetType='${sheetType}')`);
+    return;
+  }
+
+  // Create wrapper.
+  const wrapper = document.createElement("div");
+  wrapper.classList.add("oprpg-panels-wrapper");
+  wrapper.dataset.sheetType = sheetType;
+
+  // Placement strategy:
+  //  - If anchor is a tab container: try to nest inside one of its inner
+  //    columns (so we don't push the rest of the tab content down). Fall
+  //    back to prepend on the tab container itself.
+  //  - Otherwise: place as a SIBLING after the anchor.
+  const isTabContainer = anchor.hasAttribute("data-tab-contents-for")
+                      || anchor.classList?.contains("tab-content");
+  if (isTabContainer) {
+    // Prefer the LAST .attributes-column (right side) and APPEND — so we
+    // land below the native Saving Throws / Character Traits cards in
+    // Tidy5e Quadrone instead of pushing the left-column Skills down.
+    const columns = anchor.querySelectorAll(".attributes-column");
+    if (columns.length) {
+      const target = columns[columns.length - 1];
+      target.appendChild(wrapper);
+      log(`Wrapper appended to attributes-column[${columns.length - 1}] of ${columns.length}`);
+    } else {
+      // Fallback: any column-like sub-container
+      const fallback = anchor.querySelector(
+        ".columns > :last-child, .sidebar-tab-contents, [class*='-column']"
+      );
+      if (fallback) {
+        fallback.appendChild(wrapper);
+        log(`Wrapper appended to fallback sub-container: ${fallback.tagName}.${fallback.className.substring(0, 40)}`);
+      } else {
+        anchor.appendChild(wrapper);
+        log(`No sub-column found, wrapper appended to tab container: ${anchor.tagName}`);
+      }
+    }
+  } else {
+    anchor.insertAdjacentElement("afterend", wrapper);
+    log(`Wrapper placed after anchor (sibling): ${anchor.tagName}`);
+  }
+
+  // Each inject function builds its panel and appends to wrapper.
+  if (getSetting("showBountyPanel") !== false) _injectBountyPanel(app, root, actor, sheetType, wrapper);
+  _injectResourcesPanel(app, root, actor, sheetType, wrapper);
+  if (getSetting("showHakiPanel") !== false) _injectHakiPanel(app, root, actor, sheetType, wrapper);
+  if (getSetting("showTecnicasPanel") !== false) _injectTecnicasPanel(app, root, actor, sheetType, wrapper);
+
+  // Clean up empty wrapper (if no panels rendered)
+  if (!wrapper.children.length) wrapper.remove();
+
+  // For Tidy5e: hide wrapper if the currently active tab isn't an overview tab.
+  if (sheetType === "tidy5e") _updateTidyWrapperForActiveTab(root, app);
+}
+
+// dnd5e default character sheet (v13 ApplicationV2 and older fallbacks)
 Hooks.on("renderCharacterActorSheet", _onRenderCharacterSheet);
 Hooks.on("renderActorSheet5eCharacter2", _onRenderCharacterSheet);
 Hooks.on("renderActorSheet5eCharacter", _onRenderCharacterSheet);
+
+// Tidy5e Sheet — has TWO character sheet classes (Classic and Quadrone).
+// In Foundry V2, render hooks are auto-emitted as `render<ClassName>` for
+// every class in the inheritance chain.
+Hooks.on("renderTidy5eCharacterSheet", _onRenderCharacterSheetTidy);
+Hooks.on("renderTidy5eCharacterSheetQuadrone", _onRenderCharacterSheetTidy);
+Hooks.on("tidy5e-sheet.renderActorSheet", _onRenderCharacterSheetTidy);
+
+// Tidy5e's anchor (actor-portrait-container) lives in the persistent header,
+// so our wrapper would show on every tab. Toggle wrapper visibility based on
+// the active tab — only show on the Sheet/overview tabs.
+Hooks.on("tidy5e-sheet.selectTab", _onSelectTabTidy);
+
+const TIDY_VISIBLE_TABS = new Set([
+  "attributes",      // dnd5e legacy id for the "Sheet" or main overview tab
+  "sheet",
+  "details",
+  "character"
+]);
+
+function _onSelectTabTidy(app, element, newTabId) {
+  const root = element?.jquery ? element[0] : element;
+  if (!(root instanceof HTMLElement)) return;
+  const wrapper = root.querySelector(".oprpg-panels-wrapper");
+  if (!wrapper) return;
+  wrapper.style.display = TIDY_VISIBLE_TABS.has(newTabId) ? "" : "none";
+}
+
+function _updateTidyWrapperForActiveTab(root, app) {
+  const wrapper = root.querySelector(".oprpg-panels-wrapper");
+  if (!wrapper) return;
+  // Find which tab is currently active.
+  const activeTab = root.querySelector("nav.tabs .item.active")?.dataset?.tab
+                 ?? root.querySelector("[data-application-part].active")?.dataset?.applicationPart
+                 ?? app?.tabGroups?.primary;
+  if (activeTab && !TIDY_VISIBLE_TABS.has(activeTab)) {
+    wrapper.style.display = "none";
+  }
+}
+
+/**
+ * Find the right anchor element for OP panel injection, given the sheet type
+ * and an ordered list of selectors to try (each is tried in turn).
+ * @param {HTMLElement} root         the sheet root element
+ * @param {"dnd5e"|"tidy5e"} sheetType
+ * @param {object} opts
+ * @param {string[]} opts.tidyChain  selectors to try in order, in Tidy5e DOM
+ * @param {string[]} opts.dnd5eChain selectors to try in order, in dnd5e default DOM
+ * @returns {HTMLElement|null}
+ */
+function _findAnchor(root, sheetType, { tidyChain = [], dnd5eChain = [] } = {}) {
+  const chain = sheetType === "tidy5e" ? tidyChain : dnd5eChain;
+  for (const sel of chain) {
+    const el = root.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
 
 Hooks.once("ready", () => {
   // 1) Expose API FIRST so the sanity check can verify it, and so the GM
@@ -299,14 +563,8 @@ function formatBounty(amount) {
   }
 }
 
-function _injectBountyPanel(app, root, actor) {
-  root.querySelector(".oprpg-bounty-panel")?.remove();
-
-  const sidebar = root.querySelector(".sidebar");
-  if (!sidebar) return;
-
-  const anchor = sidebar.querySelector(":scope > .card");
-  if (!anchor) return;
+function _injectBountyPanel(app, root, actor, sheetType, parent) {
+  if (!parent) return; // orchestrator failure
 
   const bounty = Number(actor.flags?.oprpg?.bounty ?? 0);
   const level = Number(actor.system?.details?.level ?? 1);
@@ -354,7 +612,7 @@ function _injectBountyPanel(app, root, actor) {
     input.disabled = true;
   }
 
-  anchor.insertAdjacentElement("afterend", panel);
+  parent.appendChild(panel);
 }
 
 /* -------------------------------------------- */
@@ -369,16 +627,8 @@ function _injectBountyPanel(app, root, actor) {
  * @param {ActorSheet|ApplicationV2} app  the sheet application
  * @param {HTMLElement|jQuery} html       the sheet root element (V2: HTMLElement, V1: jQuery)
  */
-function _injectResourcesPanel(app, root, actor) {
-  // Avoid double-injection if the sheet re-renders partially.
-  root.querySelector(".oprpg-resources-panel")?.remove();
-
-  const sidebar = root.querySelector(".sidebar");
-  if (!sidebar) return;
-
-  const anchor = sidebar.querySelector(".oprpg-bounty-panel")
-              ?? sidebar.querySelector(":scope > .card");
-  if (!anchor) return;
+function _injectResourcesPanel(app, root, actor, sheetType, parent) {
+  if (!parent) return;
 
   const res = actor.system?.resources ?? {};
   const pp = res.primary ?? { value: 0, max: 0, label: "" };
@@ -441,7 +691,7 @@ function _injectResourcesPanel(app, root, actor) {
     panel.querySelectorAll(".oprpg-input").forEach(i => { i.disabled = true; });
   }
 
-  anchor.insertAdjacentElement("afterend", panel);
+  parent.appendChild(panel);
 }
 
 /* -------------------------------------------- */
@@ -454,16 +704,8 @@ const HAKI_BRANCHES = [
   { key: "rei",        labelKey: "OPRPG.HakiSubtype.Rei",        short: "REI" }
 ];
 
-function _injectHakiPanel(app, root, actor) {
-  root.querySelector(".oprpg-haki-panel")?.remove();
-
-  const sidebar = root.querySelector(".sidebar");
-  if (!sidebar) return;
-
-  // Insert after resources panel if present, else after the main card.
-  const anchor = sidebar.querySelector(".oprpg-resources-panel")
-              ?? sidebar.querySelector(":scope > .card");
-  if (!anchor) return;
+function _injectHakiPanel(app, root, actor, sheetType, parent) {
+  if (!parent) return;
 
   const stored = actor.flags?.oprpg?.haki ?? {};
   const PANEL_TITLE = game.i18n.localize("OPRPG.PanelHakiTitle");
@@ -526,7 +768,7 @@ function _injectHakiPanel(app, root, actor) {
     panel.querySelectorAll("input, button").forEach(el => { el.disabled = true; });
   }
 
-  anchor.insertAdjacentElement("afterend", panel);
+  parent.appendChild(panel);
 }
 
 /* -------------------------------------------- */
@@ -561,11 +803,8 @@ function _resolveTecnicaPPCost(item) {
   return found ? total : null;
 }
 
-function _injectTecnicasPanel(app, root, actor) {
-  root.querySelector(".oprpg-tecnicas-panel")?.remove();
-
-  const sidebar = root.querySelector(".sidebar");
-  if (!sidebar) return;
+function _injectTecnicasPanel(app, root, actor, sheetType, parent) {
+  if (!parent) return;
 
   // Collect Técnica items
   const tecnicas = actor.items
@@ -577,13 +816,7 @@ function _injectTecnicasPanel(app, root, actor) {
       return a.name.localeCompare(b.name);
     });
 
-  if (!tecnicas.length) return; // nothing to show, skip the panel entirely
-
-  // Insert after Haki (preferred) or Resources or main card.
-  const anchor = sidebar.querySelector(".oprpg-haki-panel")
-              ?? sidebar.querySelector(".oprpg-resources-panel")
-              ?? sidebar.querySelector(":scope > .card");
-  if (!anchor) return;
+  if (!tecnicas.length) return;
 
   const PANEL_TITLE = game.i18n.localize("OPRPG.PanelTecnicasTitle");
   const LABEL_GRAU = game.i18n.localize("OPRPG.LabelGrau");
@@ -644,7 +877,7 @@ function _injectTecnicasPanel(app, root, actor) {
     panel.querySelectorAll("button").forEach(b => { b.disabled = true; });
   }
 
-  anchor.insertAdjacentElement("afterend", panel);
+  parent.appendChild(panel);
 }
 
 function _escapeHtml(str) {

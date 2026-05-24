@@ -2,7 +2,7 @@
     "id": "oprpg",
     "title": "One Piece RPG (d20)",
     "description": "Adapta o sistema dnd5e do Foundry para o RPG de One Piece baseado em d20. Sobrescreve atributos, perícias, condições, tipos de dano, moedas e outras configurações em tempo de execução, sem modificar o sistema original. Adiciona painéis customizados de Recompensa, Pontos de Poder, Haki e Técnicas.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "compatibility": {
         "minimum": "13",
         "verified": "13"

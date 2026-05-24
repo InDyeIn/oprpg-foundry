@@ -5,7 +5,8 @@
 [![Foundry v13](https://img.shields.io/badge/Foundry-v13-informational)](https://foundryvtt.com/)
 [![dnd5e ≥ 5.0](https://img.shields.io/badge/dnd5e-%E2%89%A55.0.0-red)](https://github.com/foundryvtt/dnd5e)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Versão 0.1.0](https://img.shields.io/badge/version-0.1.0-blue)](CHANGELOG.md)
+[![Versão 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)](CHANGELOG.md)
+[![Tidy5e](https://img.shields.io/badge/Tidy5e-supported-purple)](https://github.com/kgar/foundry-vtt-tidy-5e-sheets)
 
 Adapta o sistema D&D 5e do Foundry VTT para jogar o **RPG de One Piece**
 (baseado em d20) sem precisar criar um sistema novo do zero. Sobrescreve
@@ -63,7 +64,11 @@ de dano, etc.) e injeta painéis próprios na ficha de personagem
 
 ### 🎨 Interface customizada
 
-A sidebar da ficha de personagem ganha 4 painéis novos:
+Funciona em **duas fichas**:
+- **Ficha padrão do dnd5e** — painéis na sidebar esquerda
+- **Tidy5e Sheet** (Classic e Quadrone) — painéis dentro da aba Character
+
+A sidebar/aba ganha 4 painéis novos:
 
 ```
 ┌─────────────────────────────┐
@@ -114,6 +119,46 @@ Disponíveis em **Game Settings → Configure Settings → One Piece RPG (d20)**
 | Regra Opcional: Guerreiros Piratas | Mundo | Desligado | *(placeholder)* |
 | Regra Opcional: Ferimentos Persistentes | Mundo | Desligado | *(placeholder)* |
 | Regra Opcional: Combate Submerso | Mundo | Desligado | *(placeholder)* |
+
+---
+
+## 🎬 Animações de Activities (novo na v0.2.0)
+
+Itens OP podem disparar animações Sequencer automaticamente quando suas
+activities são usadas. Funciona com qualquer biblioteca compatível com
+Sequencer (JB2A, Eskie Effects, etc.).
+
+### Como funciona
+1. Crie uma **Macro** no Foundry com código Sequencer que recebe contexto:
+   ```js
+   // Args injetados: actor, item, activity, token, targets
+   const tk = token ?? canvas.tokens.controlled[0]?.document;
+   for (const target of targets) {
+     await new Sequence()
+       .effect()
+         .file("modules/jb2a_patreon/.../FireImpact.webm")
+         .atLocation(target)
+         .scaleToObject(1.5)
+       .play();
+   }
+   ```
+2. No item, adicione a flag `flags.oprpg.animationMacroId = "<macroId>"` apontando
+   pra essa macro.
+3. Quando o usuário usar a activity, o hook `dnd5e.postUseActivity` dispara a
+   macro com `actor`, `item`, `activity`, `token`, `targets` no escopo.
+
+### Auto-roll de damage
+Activities tipo `damage` em items OP rolam dano **automaticamente** sem
+precisar clicar "Roll Damage" no cartão. Controlado por:
+- `flags.oprpg.autoRollDamage = true` → sempre auto-rola
+- `flags.oprpg.autoRollDamage = false` → nunca auto-rola
+- Não setado → auto-rola se item tem qualquer flag `oprpg`
+
+### Exemplo completo: Lunariano
+Veja [`examples/install-lunariano.js`](examples/install-lunariano.js) — script
+console-pasteável que cria a Espécie Lunariano com Heat (1d10 fogo + animação
+fireImpact JB2A), Manipulação do Fogo (1d4 fogo + cast→bolt→impact em 3 estágios)
+e Cabeça à Prêmio.
 
 ---
 

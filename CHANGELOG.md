@@ -13,9 +13,95 @@ e este projeto adere a [Versionamento Semântico](https://semver.org/lang/pt-BR/
 - Mecânica de Pontos de Vida Negativos (Cap. 12.6)
 - Sistema de Expertise de Armas em crit natural 20
 - Doenças OP como RollTable + condição "Doente"
-- Recharge automático da Forma Sulong (Minks)
 - Conteúdo de jogo (Espécies, Estilos, Akuma no Mi, etc.) via compendium
   separado
+
+---
+
+## [0.2.0] — 2026-05-24
+
+Segunda release. Adiciona suporte completo a **Tidy5e Sheet** (Classic e
+Quadrone) e infraestrutura de **animações via Sequencer/JB2A** acionada por
+hook na activity do dnd5e.
+
+### Adicionado
+
+#### Suporte multi-sheet
+- **Tidy5e Sheet** (classic + quadrone): hooks `renderTidy5eCharacterSheet` e
+  `renderTidy5eCharacterSheetQuadrone` registrados. Painéis OPRPG aparecem
+  automaticamente na aba "Character"/"Attributes" do Tidy.
+- **Anchor inteligente** por tipo de ficha: usa `[data-tab-contents-for="attributes"]`
+  no Quadrone (escondem automaticamente quando outra aba é selecionada),
+  `.sidebar > .card` no dnd5e default.
+- **Wrapper container** (`.oprpg-panels-wrapper`) que força `flex-direction:
+  column` independente do layout do container pai — corrige painéis ficando
+  lado a lado em layouts flex-row do Tidy.
+- **Placement strategy**: detecta se anchor é tab container (`data-tab-contents-for`
+  ou `.tab-content`) e anexa dentro da última `.attributes-column` em vez
+  de empilhar no topo — preserva o layout existente da aba.
+- **Tab visibility toggle**: hook `tidy5e-sheet.selectTab` esconde wrapper
+  quando aba ativa não é uma das overview tabs (`attributes`, `sheet`,
+  `details`, `character`).
+
+#### Animação de Activities
+- Hook **`dnd5e.postUseActivity`** que dispara quando qualquer activity é
+  usada. Lê `flags.oprpg.animationMacroId` do item pai e executa o macro
+  Foundry correspondente via `Macro#execute({actor, item, activity, token,
+  targets})` (API oficial, sem CSP issues).
+- **Auto-roll damage** para activities de tipo `damage` em items OPRPG —
+  controlado por `flags.oprpg.autoRollDamage` (opt-in explícito ou default ON
+  pra items com flag `oprpg`).
+- Macros recebem o contexto padrão: `actor`, `item`, `activity`, `token`,
+  `targets` — compatível com macros do hotbar.
+- **Desacoplado** via `setTimeout(0)` — falhas na animação não bloqueiam
+  o fluxo da activity, dano continua sendo rolado.
+- Logs prominentes (`postUseActivity FIRED: ...`) pra diagnóstico.
+
+#### Performance e diagnóstico
+- **Debounce de render** via `requestAnimationFrame` (`WeakSet` por sheet) —
+  cascada de 5 re-renders por uma única ação colapsa em 1 injeção.
+- **Confirmação de hook bound** no `ready`: `dnd5e.postUseActivity hook
+  bound — animations ready.`
+- **Diagnóstico de sheet type**: log `render → sheetType='tidy5e', actor='...'`
+  identifica qual ficha disparou.
+- **Detecção de flag itemacro velho**: warn explícito se item tem
+  `flags.itemacro` mas não `flags.oprpg.animationMacroId`.
+
+#### CSS
+- Estilos dos painéis (`oprpg-bounty-panel`, `oprpg-resources-panel`,
+  `oprpg-haki-panel`, `oprpg-tecnicas-panel`) **desacoplados** do escopo
+  `.dnd5e2.sheet.actor .sidebar` — funcionam em qualquer ficha.
+- Layout específico por sheet via `data-sheet-type`:
+  - `dnd5e`: largura 100% (fill da sidebar)
+  - `tidy5e`: largura 280px constrangida, `align-self: flex-start`
+- Tokens de design compartilhados (`--oprpg-bg`, `--oprpg-accent`, etc.)
+
+#### Exemplo de conteúdo
+- **`examples/install-lunariano.js`**: script console-pasteável que cria a
+  Espécie Lunariano completa — race + 3 feats (Heat, Manipulação do Fogo,
+  Cabeça à Prêmio) + 5 macros (animações Heat/Esfera, Ativar/Apagar Aura
+  de Fogo, Caça 1d12). Usa a API oficial `item.createActivity()` pra
+  garantir schema válido.
+
+### Corrigido
+
+- Painéis duplicando em cascata quando midi-qol ou outros módulos forçavam
+  re-renders múltiplos.
+- Wrapper sendo posicionado em local errado no Tidy5e Quadrone (push de
+  conteúdo do tab pra fora da tela).
+- Activity malformada quando criada via spread de dados literais — agora
+  usa a API `item.createActivity(type, data, options)` que garante schema
+  válido (`damage.critical`, `damage.parts[].custom`, `damage.parts[].scaling`).
+- `flags.itemacro` (módulo Item Macro v3) não disparava no fluxo de
+  activities do dnd5e v5.x — substituído por hook nativo + `Macro#execute`.
+
+### Compatibilidade
+- Foundry VTT: v13 (testado em 13.347+)
+- Sistema dnd5e: ≥ 5.0.0 (testado em 5.3.3)
+- **Tidy5e Sheet**: v13.3.0+ (Classic e Quadrone)
+- **Sequencer**: 4.x
+- **JB2A Patreon**: 0.8.6+
+- Compatível com midi-qol (mas auto-roll damage pode conflitar — opcional)
 
 ---
 

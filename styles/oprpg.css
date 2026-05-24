@@ -11,180 +11,218 @@
 }
 
 
-/* ===== One Piece RPG — Resources panel injected on character sheet ===== */
+/* ===== One Piece RPG — Wrapper that forces vertical stack ===== */
 
-.dnd5e2.sheet.actor .sidebar .oprpg-resources-panel {
-  --oprpg-bg: rgba(0, 0, 0, 0.55);
-  --oprpg-border: rgba(196, 165, 100, 0.30);
+/* The wrapper guarantees panels stack vertically regardless of whether the
+   parent container uses flex-row. Width strategy is sheet-specific so we
+   don't blow up the layout of Tidy5e Classic (whose injection anchor lives
+   in a flex-row header area). */
+.oprpg-panels-wrapper {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.4rem;
+  margin: 0.45rem 0;
+  box-sizing: border-box;
+}
+
+/* dnd5e default sheet: anchor is in the flex-column sidebar — fill it. */
+.oprpg-panels-wrapper[data-sheet-type="dnd5e"] {
+  width: 100%;
+}
+
+/* Tidy5e: constrain width and align to start so we sit as a compact column
+   without consuming the entire row width when the parent is flex-row. */
+.oprpg-panels-wrapper[data-sheet-type="tidy5e"] {
+  flex: 0 0 280px;
+  width: 280px;
+  max-width: 280px;
+  align-self: flex-start;
+  position: relative;
+  z-index: 1;
+}
+
+
+/* ===== One Piece RPG — Shared design tokens ===== */
+
+.oprpg-bounty-panel,
+.oprpg-resources-panel,
+.oprpg-haki-panel,
+.oprpg-tecnicas-panel {
+  --oprpg-bg: rgba(0, 0, 0, 0.48);
+  --oprpg-border: rgba(196, 165, 100, 0.26);
+  --oprpg-border-hover: rgba(196, 165, 100, 0.55);
   --oprpg-accent: var(--dnd5e-color-gold, #c8a86b);
-  --oprpg-text: rgba(220, 210, 190, 0.88);
-  --oprpg-text-dim: rgba(220, 210, 190, 0.45);
+  --oprpg-text: rgba(220, 210, 190, 0.92);
+  --oprpg-text-dim: rgba(220, 210, 190, 0.52);
   --oprpg-input-bg: rgba(0, 0, 0, 0.45);
 
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.45rem;
 
-  padding: 0.55rem 0.7rem 0.65rem;
-  margin: 0.5rem 0;
+  padding: 0.55rem 0.7rem;
 
   background: var(--oprpg-bg);
   border: 1px solid var(--oprpg-border);
   border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
   color: var(--oprpg-text);
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* ----- Panel title ----- */
-.oprpg-resources-panel .oprpg-title {
+/* Shared panel title (icon + label + optional count badge) */
+.oprpg-bounty-panel .oprpg-title,
+.oprpg-resources-panel .oprpg-title,
+.oprpg-haki-panel .oprpg-title,
+.oprpg-tecnicas-panel .oprpg-title {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0 0 0.1rem;
-  padding-bottom: 0.35rem;
+  margin: 0 0 0.15rem;
+  padding-bottom: 0.3rem;
   border-bottom: 1px solid var(--oprpg-border);
 
   color: var(--oprpg-accent);
   font-family: var(--dnd5e-font-roboto-slab, inherit);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
 }
 
-.oprpg-resources-panel .oprpg-title i {
-  font-size: 0.65rem;
+.oprpg-bounty-panel .oprpg-title i,
+.oprpg-resources-panel .oprpg-title i,
+.oprpg-haki-panel .oprpg-title i,
+.oprpg-tecnicas-panel .oprpg-title i {
+  font-size: 0.7rem;
   opacity: 0.85;
 }
 
-/* ----- Resource row (label + meter) ----- */
+/* Shared number input visuals */
+.oprpg-bounty-panel input[type="number"],
+.oprpg-bounty-panel input[type="text"],
+.oprpg-resources-panel .oprpg-input,
+.oprpg-haki-panel .oprpg-haki-input {
+  background: var(--oprpg-input-bg);
+  border: 1px solid var(--oprpg-border);
+  border-radius: 3px;
+  color: var(--oprpg-text);
+  font-family: inherit;
+  font-weight: 700;
+  text-align: center;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+.oprpg-bounty-panel input:hover,
+.oprpg-resources-panel .oprpg-input:hover,
+.oprpg-haki-panel .oprpg-haki-input:hover {
+  border-color: var(--oprpg-border-hover);
+}
+
+.oprpg-bounty-panel input:focus,
+.oprpg-resources-panel .oprpg-input:focus,
+.oprpg-haki-panel .oprpg-haki-input:focus {
+  outline: none;
+  border-color: var(--oprpg-accent);
+  box-shadow: 0 0 0 1px var(--oprpg-accent);
+}
+
+.oprpg-bounty-panel input:disabled,
+.oprpg-resources-panel .oprpg-input:disabled,
+.oprpg-haki-panel .oprpg-haki-input:disabled,
+.oprpg-haki-panel .oprpg-haki-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Hide native number spinners across all panels */
+.oprpg-bounty-panel input::-webkit-outer-spin-button,
+.oprpg-bounty-panel input::-webkit-inner-spin-button,
+.oprpg-resources-panel .oprpg-input::-webkit-outer-spin-button,
+.oprpg-resources-panel .oprpg-input::-webkit-inner-spin-button,
+.oprpg-haki-panel .oprpg-haki-input::-webkit-outer-spin-button,
+.oprpg-haki-panel .oprpg-haki-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.oprpg-bounty-panel input[type="number"],
+.oprpg-resources-panel .oprpg-input[type="number"],
+.oprpg-haki-panel .oprpg-haki-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+
+/* ===== Resources panel (Pontos de Poder / Ambição) ===== */
+
 .oprpg-resources-panel .oprpg-resource {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .oprpg-resources-panel .oprpg-resource-label {
-  color: var(--oprpg-text);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.85;
+  color: var(--oprpg-text);
+  opacity: 0.88;
 }
 
-/* ----- Meter (atual / máx) ----- */
 .oprpg-resources-panel .oprpg-meter {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: end;
-  gap: 0.35rem;
-}
-
-.oprpg-resources-panel .oprpg-field {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 0.15rem;
 }
 
+/* Inline value/max — the value/max separator carries the meaning */
+.oprpg-resources-panel .oprpg-field {
+  display: contents;
+}
+
 .oprpg-resources-panel .oprpg-microlabel {
-  color: var(--oprpg-text-dim);
-  font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
+  display: none; /* compact mode: omit "atual"/"máx" labels */
 }
 
 .oprpg-resources-panel .oprpg-separator {
   color: var(--oprpg-text-dim);
   font-size: 1rem;
   font-weight: 400;
-  padding-bottom: 0.15rem;
+  margin: 0 0.05rem;
 }
 
-/* ----- Inputs ----- */
 .oprpg-resources-panel .oprpg-input {
-  width: 100%;
-  min-width: 0;
-
-  background: var(--oprpg-input-bg);
-  border: 1px solid var(--oprpg-border);
-  border-radius: 3px;
-  color: var(--oprpg-text);
-
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 700;
-  text-align: center;
-
-  padding: 0.18rem 0.2rem;
-  box-sizing: border-box;
-}
-
-.oprpg-resources-panel .oprpg-input:hover {
-  border-color: rgba(196, 165, 100, 0.55);
-}
-
-.oprpg-resources-panel .oprpg-input:focus {
-  outline: none;
-  border-color: var(--oprpg-accent);
-  box-shadow: 0 0 0 1px var(--oprpg-accent);
-}
-
-.oprpg-resources-panel .oprpg-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Hide native number spinners — keep it clean. */
-.oprpg-resources-panel .oprpg-input::-webkit-outer-spin-button,
-.oprpg-resources-panel .oprpg-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.oprpg-resources-panel .oprpg-input[type="number"] {
-  -moz-appearance: textfield;
+  width: 2.4rem;
+  font-size: 0.9rem;
+  padding: 0.18rem 0.25rem;
 }
 
 
-/* ===== One Piece RPG — Haki panel ===== */
-
-.dnd5e2.sheet.actor .sidebar .oprpg-haki-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.55rem 0.7rem 0.65rem;
-  margin: 0.5rem 0;
-
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(196, 165, 100, 0.30);
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  color: rgba(220, 210, 190, 0.88);
-}
+/* ===== Haki panel ===== */
 
 .oprpg-haki-panel .oprpg-haki-row {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .oprpg-haki-panel .oprpg-haki-label {
   display: flex;
   align-items: baseline;
   gap: 0.35rem;
-  font-size: 0.7rem;
+  min-width: 0;
+  font-size: 0.72rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-weight: 700;
 }
 
 .oprpg-haki-panel .oprpg-haki-short {
-  color: var(--dnd5e-color-gold, #c8a86b);
-  opacity: 0.85;
+  color: var(--oprpg-accent);
+  opacity: 0.95;
 }
 
 .oprpg-haki-panel .oprpg-haki-full {
@@ -192,7 +230,10 @@
   font-weight: 500;
   letter-spacing: 0.03em;
   text-transform: none;
-  opacity: 0.6;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .oprpg-haki-panel .oprpg-haki-stepper {
@@ -202,13 +243,13 @@
 }
 
 .oprpg-haki-panel .oprpg-haki-btn {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.35rem;
+  height: 1.35rem;
   padding: 0;
-  border: 1px solid rgba(196, 165, 100, 0.30);
+  border: 1px solid var(--oprpg-border);
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(220, 210, 190, 0.88);
+  background: var(--oprpg-input-bg);
+  color: var(--oprpg-text);
   font-size: 0.8rem;
   font-weight: 700;
   line-height: 1;
@@ -217,75 +258,86 @@
 }
 
 .oprpg-haki-panel .oprpg-haki-btn:hover {
-  border-color: var(--dnd5e-color-gold, #c8a86b);
-  background: rgba(196, 165, 100, 0.12);
-}
-
-.oprpg-haki-panel .oprpg-haki-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+  border-color: var(--oprpg-accent);
+  background: rgba(196, 165, 100, 0.10);
 }
 
 .oprpg-haki-panel .oprpg-haki-input {
-  width: 1.9rem;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(196, 165, 100, 0.30);
-  border-radius: 3px;
-  color: rgba(220, 210, 190, 0.88);
-  font-family: inherit;
+  width: 2.1rem;
   font-size: 0.85rem;
-  font-weight: 700;
-  text-align: center;
-  padding: 0.1rem 0.2rem;
-  box-sizing: border-box;
-}
-
-.oprpg-haki-panel .oprpg-haki-input:focus {
-  outline: none;
-  border-color: var(--dnd5e-color-gold, #c8a86b);
-  box-shadow: 0 0 0 1px var(--dnd5e-color-gold, #c8a86b);
-}
-
-.oprpg-haki-panel .oprpg-haki-input::-webkit-outer-spin-button,
-.oprpg-haki-panel .oprpg-haki-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.oprpg-haki-panel .oprpg-haki-input[type="number"] {
-  -moz-appearance: textfield;
+  padding: 0.12rem 0.2rem;
 }
 
 
-/* ===== One Piece RPG — Técnicas quick-cast panel ===== */
+/* ===== Bounty + Estágio de Fama panel ===== */
 
-.dnd5e2.sheet.actor .sidebar .oprpg-tecnicas-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.55rem 0.7rem;
-  margin: 0.5rem 0;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(196, 165, 100, 0.30);
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  color: rgba(220, 210, 190, 0.88);
+.oprpg-bounty-panel {
+  background:
+    linear-gradient(180deg, rgba(196, 165, 100, 0.06) 0%, rgba(0, 0, 0, 0) 60%),
+    var(--oprpg-bg);
+  border-color: rgba(196, 165, 100, 0.32);
 }
 
-.oprpg-tecnicas-panel .oprpg-title {
-  display: flex;
+.oprpg-bounty-panel .oprpg-bounty-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: 0.4rem;
 }
 
+.oprpg-bounty-panel .oprpg-bounty-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--oprpg-accent);
+  opacity: 0.88;
+}
+
+.oprpg-bounty-panel .oprpg-bounty-value {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  justify-self: end;
+}
+
+.oprpg-bounty-panel .oprpg-bounty-symbol {
+  color: var(--oprpg-accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+.oprpg-bounty-panel .oprpg-bounty-input {
+  width: 7.5rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: right;
+  padding: 0.18rem 0.35rem;
+}
+
+.oprpg-bounty-panel .oprpg-fame-stage {
+  justify-self: end;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--oprpg-text);
+  opacity: 0.88;
+  letter-spacing: 0.02em;
+}
+
+
+/* ===== Técnicas quick-cast panel ===== */
+
 .oprpg-tecnicas-panel .oprpg-count {
   margin-left: auto;
-  background: rgba(196, 165, 100, 0.15);
-  border: 1px solid rgba(196, 165, 100, 0.30);
+  background: rgba(196, 165, 100, 0.13);
+  border: 1px solid var(--oprpg-border);
   border-radius: 999px;
-  padding: 0 0.4rem;
-  font-size: 0.65rem;
+  padding: 0 0.35rem;
+  font-size: 0.55rem;
   font-weight: 700;
-  color: var(--dnd5e-color-gold, #c8a86b);
+  color: var(--oprpg-accent);
 }
 
 .oprpg-tecnica-list {
@@ -294,7 +346,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.18rem;
   max-height: 14rem;
   overflow-y: auto;
 }
@@ -306,12 +358,12 @@
 .oprpg-tecnica-use {
   width: 100%;
   display: grid;
-  grid-template-columns: 1.8rem 1fr;
+  grid-template-columns: 1.4rem 1fr;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.35rem;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(196, 165, 100, 0.18);
+  gap: 0.35rem;
+  padding: 0.2rem 0.3rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(196, 165, 100, 0.14);
   border-radius: 3px;
   color: inherit;
   font: inherit;
@@ -321,8 +373,8 @@
 }
 
 .oprpg-tecnica-use:hover {
-  border-color: var(--dnd5e-color-gold, #c8a86b);
-  background: rgba(196, 165, 100, 0.10);
+  border-color: var(--oprpg-accent);
+  background: rgba(196, 165, 100, 0.08);
 }
 
 .oprpg-tecnica-use:disabled {
@@ -331,23 +383,23 @@
 }
 
 .oprpg-tecnica-icon {
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 1.3rem;
+  height: 1.3rem;
   object-fit: cover;
   border-radius: 2px;
-  border: 1px solid rgba(196, 165, 100, 0.30);
-  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--oprpg-border);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .oprpg-tecnica-meta {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.06rem;
   min-width: 0;
 }
 
 .oprpg-tecnica-name {
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -356,106 +408,20 @@
 
 .oprpg-tecnica-tags {
   display: flex;
-  gap: 0.3rem;
-  font-size: 0.6rem;
+  gap: 0.25rem;
+  font-size: 0.52rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .oprpg-tag {
-  padding: 0 0.3rem;
+  padding: 0 0.28rem;
   border-radius: 999px;
-  border: 1px solid rgba(196, 165, 100, 0.18);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(220, 210, 190, 0.75);
+  border: 1px solid rgba(196, 165, 100, 0.16);
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--oprpg-text-dim);
 }
 
 .oprpg-tag-pp {
-  color: var(--dnd5e-color-gold, #c8a86b);
-}
-
-
-/* ===== One Piece RPG — Bounty / Estágio de Fama panel ===== */
-
-.dnd5e2.sheet.actor .sidebar .oprpg-bounty-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.55rem 0.7rem 0.65rem;
-  margin: 0.5rem 0;
-  background:
-    linear-gradient(180deg, rgba(196, 165, 100, 0.08) 0%, rgba(0, 0, 0, 0) 60%),
-    rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(196, 165, 100, 0.40);
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
-  color: rgba(220, 210, 190, 0.88);
-}
-
-.oprpg-bounty-panel .oprpg-bounty-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.oprpg-bounty-panel .oprpg-bounty-label {
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--dnd5e-color-gold, #c8a86b);
-  opacity: 0.85;
-}
-
-.oprpg-bounty-panel .oprpg-bounty-value {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  justify-self: end;
-}
-
-.oprpg-bounty-panel .oprpg-bounty-symbol {
-  color: var(--dnd5e-color-gold, #c8a86b);
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.oprpg-bounty-panel .oprpg-bounty-input {
-  width: 7rem;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(196, 165, 100, 0.30);
-  border-radius: 3px;
-  color: rgba(220, 210, 190, 0.95);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-align: right;
-  padding: 0.18rem 0.35rem;
-  box-sizing: border-box;
-  font-variant-numeric: tabular-nums;
-}
-
-.oprpg-bounty-panel .oprpg-bounty-input:hover {
-  border-color: rgba(196, 165, 100, 0.55);
-}
-
-.oprpg-bounty-panel .oprpg-bounty-input:focus {
-  outline: none;
-  border-color: var(--dnd5e-color-gold, #c8a86b);
-  box-shadow: 0 0 0 1px var(--dnd5e-color-gold, #c8a86b);
-}
-
-.oprpg-bounty-panel .oprpg-bounty-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.oprpg-bounty-panel .oprpg-fame-stage {
-  justify-self: end;
-  font-size: 0.78rem;
-  font-weight: 600;
-  font-style: italic;
-  color: rgba(220, 210, 190, 0.88);
-  letter-spacing: 0.02em;
+  color: var(--oprpg-accent);
 }
